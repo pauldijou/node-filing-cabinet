@@ -252,7 +252,7 @@ function tsLookup({dependency, filename, tsConfig, tsConfigPath, noTypeDefinitio
     // REF: https://github.com/dividab/tsconfig-paths#creatematchpath
     const tsMatchPath = createMatchPath(absoluteBaseUrl, compilerOptions.paths)
     // REF: https://github.com/dividab/tsconfig-paths#creatematchpath
-    const resolvedTsAliasPath = tsMatchPath(dependency) // Get absolute path by ts path mapping. `undefined` if non-existent
+    const resolvedTsAliasPath = tsMatchPath(dependency, undefined, undefined, ['.tsx', '.ts', '.js', '.jsx']) // Get absolute path by ts path mapping. `undefined` if non-existent
     if (resolvedTsAliasPath) {
       const stat = (() => {
         try {
