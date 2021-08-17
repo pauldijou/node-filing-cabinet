@@ -1,6 +1,8 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
+const { createMatchPath } = require('tsconfig-paths')
 const debug = require('debug')('cabinet');
 
 /*
@@ -211,8 +213,12 @@ function jsLookup({dependency, filename, directory, config, webpackConfig, confi
   }
 }
 
-function tsLookup({dependency, filename, tsConfig, noTypeDefinitions}) {
+function tsLookup({dependency, filename, tsConfig, tsConfigPath, noTypeDefinitions}) {
   debug('performing a typescript lookup');
+
+  if (typeof tsConfig === 'string') {
+    tsConfigPath = tsConfigPath || path.dirname(tsConfig)
+  }
 
   let compilerOptions = getCompilerOptionsFromTsConfig(tsConfig);
 
@@ -239,6 +245,48 @@ function tsLookup({dependency, filename, tsConfig, noTypeDefinitions}) {
       .map((string) => string.substr(0, string.length - suffix.length));
 
     result = lookUpLocations.find(ts.sys.fileExists) || '';
+  }
+
+  if (!result && tsConfigPath && compilerOptions.baseUrl && compilerOptions.paths) {
+    const absoluteBaseUrl = path.join(path.dirname(tsConfigPath), compilerOptions.baseUrl)
+    // REF: https://github.com/dividab/tsconfig-paths#creatematchpath
+    const tsMatchPath = createMatchPath(absoluteBaseUrl, compilerOptions.paths)
+    // REF: https://github.com/dividab/tsconfig-paths#creatematchpath
+    const resolvedTsAliasPath = tsMatchPath(dependency) // Get absolute path by ts path mapping. `undefined` if non-existent
+    if (resolvedTsAliasPath) {
+      const stat = (() => {
+        try {
+          // fs.statSync throws an error if path is non-existent
+          return fs.statSync(resolvedTsAliasPath)
+        } catch (error) {
+          return undefined
+        }
+      })()
+      if (stat) {
+        if (stat.isDirectory()) {
+          // When directory is imported, index file is resolved
+          for (const indexFile of ['index.ts', 'index.tsx', 'index.js', 'index.jsx']) {
+            const filename = path.join(resolvedTsAliasPath, indexFile)
+            if (fs.existsSync(filename)) {
+              result = filename
+              break;
+            }
+          }
+        } else {
+          // if the path is complete filename
+          result = resolvedTsAliasPath
+        }
+      } else {
+        // For cases a file extension is omitted when being imported
+        for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+          const filenameWithExt = resolvedTsAliasPath + ext
+          if (fs.existsSync(filenameWithExt)) {
+            result = filenameWithExt
+            break;
+          }
+        }
+      }
+    }
   }
 
   debug('result: ' + result);
